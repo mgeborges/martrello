@@ -172,28 +172,38 @@ export function BoardProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const moveList = (boardId: string, fromIndex: number, toIndex: number) => {
+  const moveList = async (boardId: string, fromIndex: number, toIndex: number) => {
+    const board = boards.find(b => b.id === boardId);
+    if (!board) return;
+
+    const newLists = [...board.lists];
+    const [movedList] = newLists.splice(fromIndex, 1);
+    newLists.splice(toIndex, 0, movedList);
+    
+    const formattedLists = newLists.map((list, idx) => ({ ...list, position: idx }));
+
     setBoards((prev) =>
-      prev.map((board) => {
-        if (board.id !== boardId) return board;
-
-        const newLists = [...board.lists];
-        const [movedList] = newLists.splice(fromIndex, 1);
-        newLists.splice(toIndex, 0, movedList);
-
-        // Update positions in backend for each list
-        newLists.forEach((list, idx) => {
-          if (list.position !== idx) {
-            apiClient.updateList(Number(list.id), { position: idx }).catch(console.error);
-          }
-        });
-
+      prev.map((b) => {
+        if (b.id !== boardId) return b;
         return {
-          ...board,
-          lists: newLists.map((list, idx) => ({ ...list, position: idx })),
+          ...b,
+          lists: formattedLists,
         };
       })
     );
+
+    // Update positions in backend for each list
+    try {
+      for (let i = 0; i < formattedLists.length; i++) {
+        const list = formattedLists[i];
+        if (list.position !== board.lists.find(l => l.id === list.id)?.position) {
+          await apiClient.updateList(Number(list.id), { position: list.position });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to update list positions:', error);
+      refreshBoards();
+    }
   };
 
   const createCard = async (listId: string, title: string): Promise<Card> => {
